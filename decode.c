@@ -257,13 +257,16 @@ Status do_decoding(DecodeInfo *decInfo)
         printf("ERROR : Invalid Stego Image\n");
         return e_failure;
     }
-
-    /* Decode extension */
-    if(decode_secret_file_extn(decInfo) == e_failure)
+    /*decoding extension size*/
+    if (decode_secret_file_extn_size(decInfo) == e_failure)   // ← is this called first?
     {
         return e_failure;
     }
-
+    /* decode extension*/
+    if (decode_secret_file_extn(decInfo) == e_failure)
+    {
+        return e_failure;
+    }
     /* Create output filename */
     strcpy(filename,
            decInfo->output_fname);

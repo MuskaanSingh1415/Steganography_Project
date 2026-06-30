@@ -10,6 +10,8 @@ SRC = main.c encode.c decode.c
 # Output executable
 TARGET = stego
 
+.PHONY: all encode decode clean
+
 # Default target
 all:
 	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
