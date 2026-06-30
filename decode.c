@@ -101,6 +101,37 @@ Status decode_magic_string(DecodeInfo *decInfo)
 }
 
 /*
+ * Decode secret file extension size
+ */
+Status decode_secret_file_extn_size(DecodeInfo *decInfo)
+{
+    char image_buffer[32];
+    int size = 0;
+    int i;
+
+    printf("INFO : Decoding Secret File Extension Size\n");
+
+    /* Read 32 image bytes */
+    fread(image_buffer,
+          1,
+          32,
+          decInfo->fptr_stego_image);
+
+    /* Rebuild the original 32-bit integer */
+    for (i = 0; i < 32; i++)
+    {
+        size = (size << 1) | (image_buffer[i] & 1);
+    }
+
+    decInfo->extn_size = size;
+
+    printf("INFO : Extension Size Decoded = %d\n",
+           decInfo->extn_size);
+
+    return e_success;
+}
+
+/*
  * Decode secret file extension
  */
 Status decode_secret_file_extn(DecodeInfo *decInfo)
@@ -111,25 +142,21 @@ Status decode_secret_file_extn(DecodeInfo *decInfo)
 
     printf("INFO : Decoding Secret File Extension\n");
 
-    /* Decode 4 characters (.txt) */
-    for(i = 0; i < 4; i++)
+    /* Decode extn_size characters instead of hardcoded 4 */
+    for (i = 0; i < decInfo->extn_size; i++)
     {
-        /* Read 8 image bytes */
         fread(image_buffer,
               1,
               8,
               decInfo->fptr_stego_image);
 
-        /* Decode one character */
         decode_byte_from_lsb(image_buffer,
                              &ch);
 
-        /* Store character */
         decInfo->extn_secret_file[i] = ch;
     }
 
-    /* Add string terminator */
-    decInfo->extn_secret_file[4] = '\0';
+    decInfo->extn_secret_file[decInfo->extn_size] = '\0';
 
     printf("INFO : Extension Decoded = %s\n",
            decInfo->extn_secret_file);

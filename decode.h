@@ -18,6 +18,7 @@ typedef struct _DecodeInfo
     /* Secret file details */
     char extn_secret_file[10];
     long size_secret_file;
+    int extn_size; 
 
 } DecodeInfo;
 
@@ -37,6 +38,8 @@ Status do_decoding(DecodeInfo *decInfo);
 /* Decode magic string */
 Status decode_magic_string(DecodeInfo *decInfo);
 
+/* decode extension size*/
+Status decode_secret_file_extn_size(DecodeInfo *decInfo);
 /* Decode extension */
 Status decode_secret_file_extn(DecodeInfo *decInfo);
 

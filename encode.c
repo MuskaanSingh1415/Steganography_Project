@@ -215,6 +215,47 @@ Status encode_magic_string(const char *magic_string, EncodeInfo *encInfo)
 
     return e_success;
 }
+
+ /*
+ * Encode secret file extension size
+ * Encodes the length of the extension string (e.g. 4 for ".txt")
+ * so the decoder knows how many characters to read back
+ */
+Status encode_secret_file_extn_size(int size, EncodeInfo *encInfo)
+{
+    char image_buffer[32];   // 32 image bytes — one per bit of the 32-bit size
+
+    printf("INFO : Encoding Secret File Extension Size\n");
+
+    fread(image_buffer,
+          1,
+          32,
+          encInfo->fptr_src_image);
+    // read 32 bytes from source image
+    // these bytes will carry the 32 bits of size
+
+    for (int i = 0; i < 32; i++)
+    {
+        if ((size >> (31 - i)) & 1)
+        {
+            image_buffer[i] = image_buffer[i] | 1;
+        }
+        else
+        {
+            image_buffer[i] = image_buffer[i] & 0xFE;
+        }
+    }
+
+    fwrite(image_buffer,
+           1,
+           32,
+           encInfo->fptr_stego_image);
+    // write the modified 32 bytes into the stego image
+
+    printf("INFO : Extension Size Encoded Successfully\n");
+
+    return e_success;
+}
 /*
  * Encode secret file extension
  * Example : .txt
@@ -406,6 +447,15 @@ extn = strrchr(encInfo->secret_fname, '.');
 /* Store extension */
 strcpy(encInfo->extn_secret_file,
        extn);
+       
+/*store extn size*/
+ if (encode_secret_file_extn_size(
+        strlen(encInfo->extn_secret_file),
+        encInfo) == e_failure)
+{
+    printf("ERROR : Failed to encode extension size\n");
+    return e_failure;
+}
 
 /* Encode extension */
 if (encode_secret_file_extn(
