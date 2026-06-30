@@ -8,24 +8,36 @@
 /* Read and validate encode arguments */
 Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
 {
-    char *ptr;
- 
+    char ch1, ch2;
+
     /* Store source image filename */
     encInfo->src_image_fname = argv[2];
- 
-    /* Check whether source image is .bmp */
-    ptr = strrchr(encInfo->src_image_fname, '.');
- 
-    if (ptr == NULL || strcmp(ptr, ".bmp") != 0)
+
+    /* Open source image */
+    FILE *fp = fopen(encInfo->src_image_fname, "rb");
+
+    if(fp == NULL)
     {
         return e_failure;
     }
- 
-    /* Store secret filename */
+
+    /* Read first two bytes */
+    fread(&ch1, 1, 1, fp);
+    fread(&ch2, 1, 1, fp);
+
+    fclose(fp);
+
+    /* BMP files always start with BM */
+    if(ch1 != 'B' || ch2 != 'M')
+    {
+        return e_failure;
+    }
+
+    /* Store secret file name */
     encInfo->secret_fname = argv[3];
- 
-    /* Store output filename */
-    if (argv[4] != NULL)
+
+    /* Store output file name */
+    if(argv[4] != NULL)
     {
         encInfo->stego_image_fname = argv[4];
     }
@@ -33,17 +45,14 @@ Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
     {
         encInfo->stego_image_fname = "stego.bmp";
     }
- 
+
     return e_success;
 }
 /*
  * Check whether the image has enough capacity
  * to store the secret data.
  */
-/*
- * Check whether the image has enough capacity
- * to store the secret data.
- */
+
 Status check_capacity(EncodeInfo *encInfo)
 {
     /* Get total image capacity */
@@ -88,9 +97,7 @@ uint get_image_size_for_bmp(FILE *fptr_image)
     /* Return total image capacity */
     return (width * height * 3);
 }
-/*
- * Find the size of the secret file.
- */
+
 /*
  * Get size of secret file
  */
@@ -208,58 +215,60 @@ Status encode_magic_string(const char *magic_string, EncodeInfo *encInfo)
 
     return e_success;
 }
-
-
-Status encode_data_to_image(const char *data, int size, FILE *fptr_src_image, FILE *fptr_stego_image)
+/*
+ * Encode secret file extension
+ * Example : .txt
+ */
+Status encode_secret_file_extn(const char *file_extn,
+                               EncodeInfo *encInfo)
 {
-    // holds 8 image bytes — one byte to carry each bit of 1 data byte
-    char image_buffer[8];   
+    printf("INFO : Encoding Secret File Extension\n");
 
-    /* encode size first, byte by byte, reusing the same image_buffer and encode_byte_tolsb */
-    // size is an int = 4 bytes, encode each one
-
-    for (int i = 0; i < sizeof(int); i++)   
+    if(encode_data_to_image(file_extn,
+                            strlen(file_extn),
+                            encInfo->fptr_src_image,
+                            encInfo->fptr_stego_image) == e_failure)
     {
-        // shift size right so the byte we want lands in the lowest 8 bits
-        // i=0 → most significant byte of size
-        // i=3 → least significant byte of size
+        printf("ERROR : Failed to encode extension\n");
+        return e_failure;
+    }
 
-        char size_byte = (size >> (24 - i * 8));
-        
-        // read next 8 bytes from source image
-        // these 8 bytes will carry the 8 bits of size_byte
+    printf("INFO : Secret File Extension Encoded Successfully\n");
 
+    return e_success;
+}
+
+/*
+ * Encode data into image.
+ * Each character is stored using 8 image bytes.
+ */
+Status encode_data_to_image(const char *data,
+                            int size,
+                            FILE *fptr_src_image,
+                            FILE *fptr_stego_image)
+{
+    /* Stores 8 bytes read from source image */
+    char image_buffer[8];
+
+    /* Encode one character at a time */
+    for(int i = 0; i < size; i++)
+    {
+        /* Read 8 image bytes from source image */
         fread(image_buffer, 1, 8, fptr_src_image);
 
-         // hide size_byte inside the LSBs of image_buffer
+        /*
+         * Hide one character inside these 8 bytes.
+         * Each bit of the character is stored in
+         * the LSB of one image byte.
+         */
+        encode_byte_tolsb(data[i], image_buffer);
 
-        encode_byte_tolsb(size_byte, image_buffer);
-
-        // write the modified 8 bytes into the stego image
-
+        /* Write modified bytes to stego image */
         fwrite(image_buffer, 1, 8, fptr_stego_image);
     }
-    // loop once for every byte in data
 
-    for (int i = 0; i < size; i++) 
-    {
-
-        // read next 8 bytes from source image
-        // these 8 bytes will carry the 8 bits of data[i]
-
-        fread(image_buffer, 1, 8, fptr_src_image);  
- 
-        // hide data[i] inside the LSBs of image_buffer
-
-        encode_byte_tolsb(data[i], image_buffer);  
-  
-        // write the modified 8 bytes into the stego image
-
-        fwrite(image_buffer, 1, 8, fptr_stego_image); 
-    }
-    // signal that encoding completed without error
-
-    return e_success;   
+    /* Encoding completed successfully */
+    return e_success;
 }
 
 Status encode_byte_tolsb(char data, char *image_buffer)
@@ -288,6 +297,70 @@ Status encode_byte_tolsb(char data, char *image_buffer)
          */
         image_buffer[i] = (image_buffer[i] & 0xFE) | bit;
     }
+
+    return e_success;
+}
+/*
+ * Encode secret file size
+ * File size is stored using 32 image bytes
+ */
+Status encode_secret_file_size(long file_size,
+                               EncodeInfo *encInfo)
+{
+    char image_buffer[32];
+    int i;
+
+    printf("INFO : Encoding Secret File Size\n");
+
+    /* Read 32 bytes from source image */
+    fread(image_buffer,
+          1,
+          32,
+          encInfo->fptr_src_image);
+
+    /* Store 32 bits of file size in LSBs */
+    for(i = 0; i < 32; i++)
+    {
+        image_buffer[i] =
+        (image_buffer[i] & 0xFE) |
+        ((file_size >> (31 - i)) & 1);
+    }
+
+    /* Write modified bytes to stego image */
+    fwrite(image_buffer,
+           1,
+           32,
+           encInfo->fptr_stego_image);
+
+    printf("INFO : File Size Encoded Successfully\n");
+
+    return e_success;
+}
+/*
+ * Encode secret file data
+ */
+Status encode_secret_file_data(EncodeInfo *encInfo)
+{
+    char ch;
+
+    printf("INFO : Encoding Secret File Data\n");
+
+    rewind(encInfo->fptr_secret);
+
+    while(fread(&ch, 1, 1,
+                encInfo->fptr_secret) == 1)
+    {
+        if(encode_data_to_image(&ch,
+                                1,
+                                encInfo->fptr_src_image,
+                                encInfo->fptr_stego_image)
+                                == e_failure)
+        {
+            return e_failure;
+        }
+    }
+
+    printf("INFO : Secret File Data Encoded Successfully\n");
 
     return e_success;
 }
@@ -325,19 +398,37 @@ Status do_encoding(EncodeInfo *encInfo)
         printf("ERROR : Failed to encode magic string\n");
         return e_failure;
     }
+/* Get extension from secret file */
+char *extn;
 
-    /* These functions will be added later */
-    /*
-    if (encode_secret_file_extn(encInfo->extn_secret_file, encInfo) == e_failure)
-        return e_failure;
+extn = strrchr(encInfo->secret_fname, '.');
 
-    if (encode_secret_file_size(encInfo->size_secret_file, encInfo) == e_failure)
-        return e_failure;
+/* Store extension */
+strcpy(encInfo->extn_secret_file,
+       extn);
 
-    if (encode_secret_file_data(encInfo) == e_failure)
-        return e_failure;
-    */
+/* Encode extension */
+if (encode_secret_file_extn(
+        encInfo->extn_secret_file,
+        encInfo) == e_failure)
+{
+    printf("ERROR : Failed to encode extension\n");
+    return e_failure;
+}
 
+/* Encode secret file size */
+if (encode_secret_file_size(
+        encInfo->size_secret_file,
+        encInfo) == e_failure)
+{
+    printf("ERROR : Failed to encode file size\n");
+    return e_failure;
+}
+if (encode_secret_file_data(encInfo) == e_failure)
+{
+    printf("ERROR : Failed to encode secret file data\n");
+    return e_failure;
+}
     /* Copy remaining image bytes */
     if (copy_remaining_img_data(encInfo->fptr_src_image,
                                 encInfo->fptr_stego_image) == e_failure)
