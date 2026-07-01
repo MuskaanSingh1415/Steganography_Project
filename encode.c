@@ -300,7 +300,7 @@ Status encode_data_to_image(const char *data,
                             FILE *fptr_stego_image)
 {
     /* Stores 8 bytes read from source image */
-    char image_buffer[8];
+    char image_buffer[EIGHT_ELEMENT];
 
     /* Encode one character at a time */
     for(int i = 0; i < size; i++)
@@ -356,33 +356,32 @@ Status encode_byte_tolsb(char data, char *image_buffer)
  * Encode secret file size
  * File size is stored using 32 image bytes
  */
+/*
+ * Encode secret file size
+ * File size is stored using 32 image bytes
+ */
 Status encode_secret_file_size(long file_size,
                                EncodeInfo *encInfo)
 {
-    char image_buffer[32];
+    char size_buf[sizeof(int)];
     int i;
 
     printf("INFO : Encoding Secret File Size\n");
 
-    /* Read 32 bytes from source image */
-    fread(image_buffer,
-          1,
-          32,
-          encInfo->fptr_src_image);
-
-    /* Store 32 bits of file size in LSBs */
-    for(i = 0; i < 32; i++)
+    /* Break size into 4 bytes, big-endian, to match the decoder
+       and to match encode_secret_file_extn_size's format */
+    for (i = 0; i < sizeof(int); i++)
     {
-        image_buffer[i] =
-        (image_buffer[i] & 0xFE) |
-        ((file_size >> (31 - i)) & 1);
+        size_buf[i] = (char)(file_size >> (24 - i * 8));
     }
 
-    /* Write modified bytes to stego image */
-    fwrite(image_buffer,
-           ONE_BYTE,
-           32,
-           encInfo->fptr_stego_image);
+    if (encode_data_to_image(size_buf,
+                             sizeof(int),
+                             encInfo->fptr_src_image,
+                             encInfo->fptr_stego_image) == e_failure)
+    {
+        return e_failure;
+    }
 
     printf("INFO : File Size Encoded Successfully\n");
 
@@ -448,9 +447,14 @@ Status do_encoding(EncodeInfo *encInfo)
         printf("ERROR : Failed to encode magic string\n");
         return e_failure;
     }
-
     /* Get extension from secret file */
     extn = strrchr(encInfo->secret_fname, '.');
+
+    if (extn == NULL)
+    {
+        printf("ERROR : Secret file has no extension\n");
+        return e_failure;
+    }
 
     /* Store extension */
     strcpy(encInfo->extn_secret_file, extn);

@@ -129,7 +129,7 @@ Status decode_magic_string(DecodeInfo *decInfo)
  */
 Status decode_secret_file_extn_size(DecodeInfo *decInfo)
 {
-    char image_buffer[EIGHT_BYTE];   // holds 8 image bytes per bit extraction
+    char image_buffer[EIGHT_ELEMENT];   // holds 8 image bytes per bit extraction
     char size_byte;
     int decoded_size = 0;
     int i;
@@ -140,17 +140,20 @@ Status decode_secret_file_extn_size(DecodeInfo *decInfo)
     for (i = 0; i < sizeof(int); i++)
     {
         /* Read 8 image bytes — carries 8 bits of one size byte */
-        fread(image_buffer,
-              ONE_BYTE,
-              EIGHT_ELEMENT,
-              decInfo->fptr_stego_image);
+        if (fread(image_buffer,
+          ONE_BYTE,
+          EIGHT_ELEMENT,
+          decInfo->fptr_stego_image) != EIGHT_ELEMENT)
+        {
+            return e_failure;
+        }
 
         /* Rebuild one byte from the LSBs of image_buffer */
         decode_byte_from_lsb(image_buffer, &size_byte);
 
         /* Shift previously decoded bytes left by 8 to make room */
         /* OR in the newly decoded byte into the freed-up lowest 8 bits */
-        decoded_size = (decoded_size << 8) | size_byte ;
+        decoded_size = (decoded_size << 8) | (unsigned char)size_byte;
     }
 
     /* Store the fully reconstructed extension size */
@@ -167,11 +170,17 @@ Status decode_secret_file_extn_size(DecodeInfo *decInfo)
  */
 Status decode_secret_file_extn(DecodeInfo *decInfo)
 {
-    char image_buffer[8];
+    char image_buffer[EIGHT_ELEMENT];
     char ch;
     int i;
 
     printf("INFO : Decoding Secret File Extension\n");
+
+    if (decInfo->extn_size < 0 || decInfo->extn_size >= sizeof(decInfo->extn_secret_file))
+    {
+        printf("ERROR : Invalid extension size\n");
+        return e_failure;
+    }
 
     /* Decode extn_size characters instead of hardcoded 4 */
     for (i = 0; i < decInfo->extn_size; i++)
@@ -181,8 +190,10 @@ Status decode_secret_file_extn(DecodeInfo *decInfo)
               EIGHT_ELEMENT,
               decInfo->fptr_stego_image);
 
-        decode_byte_from_lsb(image_buffer,
-                             &ch);
+        if (decode_byte_from_lsb(image_buffer, &ch) == e_failure)
+        {
+            return e_failure;
+        }
 
         decInfo->extn_secret_file[i] = ch;
     }
@@ -200,16 +211,16 @@ Status decode_secret_file_extn(DecodeInfo *decInfo)
  */
 Status decode_secret_file_size(DecodeInfo *decInfo)
 {
-    char image_buffer[8];
+    char image_buffer[EIGHT_ELEMENT];
     char size_byte;
     int decoded_size = 0;
 
     printf("INFO : Decoding Secret File Size\n");
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < sizeof(int); i++)
     {
         /* Read 8 image bytes */
-        fread(image_buffer, 1, 8, decInfo->fptr_stego_image);
+        fread(image_buffer, ONE_BYTE, EIGHT_ELEMENT, decInfo->fptr_stego_image);
 
         /* Decode one byte */
         decode_byte_from_lsb(image_buffer, &size_byte);
@@ -229,7 +240,7 @@ Status decode_secret_file_size(DecodeInfo *decInfo)
  */
 Status decode_secret_file_data(DecodeInfo *decInfo)
 {
-    char image_buffer[8];
+    char image_buffer[EIGHT_ELEMENT];
     char ch;
     long i;
 
