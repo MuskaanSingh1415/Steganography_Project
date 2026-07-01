@@ -13,23 +13,17 @@ Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
     /* Store source image filename */
     encInfo->src_image_fname = argv[2];
 
-    /* Open source image */
-    FILE *fp = fopen(encInfo->src_image_fname, "rb");
-
-    if(fp == NULL)
+    /* Check if source image is provided */
+    if (argv[2] == NULL)
     {
+        printf("ERROR : Source image not provided\n");
         return e_failure;
     }
 
-    /* Read first two bytes */
-    fread(&ch1, 1, 1, fp);
-    fread(&ch2, 1, 1, fp);
-
-    fclose(fp);
-
-    /* BMP files always start with BM */
-    if(ch1 != 'B' || ch2 != 'M')
+    /* Check if secret file is provided */
+    if (argv[3] == NULL)
     {
+        printf("ERROR : Secret file not provided\n");
         return e_failure;
     }
 
@@ -37,7 +31,7 @@ Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
     encInfo->secret_fname = argv[3];
 
     /* Store output file name */
-    if(argv[4] != NULL)
+    if (argv[4] != NULL)
     {
         encInfo->stego_image_fname = argv[4];
     }
@@ -45,6 +39,27 @@ Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
     {
         encInfo->stego_image_fname = "stego.bmp";
     }
+
+    /* Open all files first */
+    if (open_files(encInfo) == e_failure)
+    {
+        printf("ERROR : Unable to open files\n");
+        return e_failure;
+    }
+
+    /* Read first two bytes from already opened source image */
+    fread(&ch1, 1, 1, encInfo->fptr_src_image);
+    fread(&ch2, 1, 1, encInfo->fptr_src_image);
+
+    /* BMP files always start with 'B' and 'M' */
+    if (ch1 != 'B' || ch2 != 'M')
+    {
+        printf("ERROR : Invalid BMP file\n");
+        return e_failure;
+    }
+
+    /* Move file pointer back to beginning */
+    rewind(encInfo->fptr_src_image);
 
     return e_success;
 }
@@ -411,12 +426,10 @@ Status encode_secret_file_data(EncodeInfo *encInfo)
  */
 Status do_encoding(EncodeInfo *encInfo)
 {
-    /* Open all required files */
-    if (open_files(encInfo) == e_failure)
-    {
-        printf("ERROR : Unable to open files\n");
-        return e_failure;
-    }
+    /* No need to call open_files here anymore */
+    /* It is already called inside read_and_validate_encode_args */
+
+    char *extn;
 
     /* Check image capacity */
     if (check_capacity(encInfo) == e_failure)
@@ -439,46 +452,47 @@ Status do_encoding(EncodeInfo *encInfo)
         printf("ERROR : Failed to encode magic string\n");
         return e_failure;
     }
-/* Get extension from secret file */
-char *extn;
 
-extn = strrchr(encInfo->secret_fname, '.');
+    /* Get extension from secret file */
+    extn = strrchr(encInfo->secret_fname, '.');
 
-/* Store extension */
-strcpy(encInfo->extn_secret_file,
-       extn);
-       
-/*store extn size*/
- if (encode_secret_file_extn_size(
-        strlen(encInfo->extn_secret_file),
-        encInfo) == e_failure)
-{
-    printf("ERROR : Failed to encode extension size\n");
-    return e_failure;
-}
+    /* Store extension */
+    strcpy(encInfo->extn_secret_file, extn);
 
-/* Encode extension */
-if (encode_secret_file_extn(
-        encInfo->extn_secret_file,
-        encInfo) == e_failure)
-{
-    printf("ERROR : Failed to encode extension\n");
-    return e_failure;
-}
+    /* Encode extension size */
+    if (encode_secret_file_extn_size(
+            strlen(encInfo->extn_secret_file),
+            encInfo) == e_failure)
+    {
+        printf("ERROR : Failed to encode extension size\n");
+        return e_failure;
+    }
 
-/* Encode secret file size */
-if (encode_secret_file_size(
-        encInfo->size_secret_file,
-        encInfo) == e_failure)
-{
-    printf("ERROR : Failed to encode file size\n");
-    return e_failure;
-}
-if (encode_secret_file_data(encInfo) == e_failure)
-{
-    printf("ERROR : Failed to encode secret file data\n");
-    return e_failure;
-}
+    /* Encode extension */
+    if (encode_secret_file_extn(
+            encInfo->extn_secret_file,
+            encInfo) == e_failure)
+    {
+        printf("ERROR : Failed to encode extension\n");
+        return e_failure;
+    }
+
+    /* Encode secret file size */
+    if (encode_secret_file_size(
+            encInfo->size_secret_file,
+            encInfo) == e_failure)
+    {
+        printf("ERROR : Failed to encode file size\n");
+        return e_failure;
+    }
+
+    /* Encode secret file data */
+    if (encode_secret_file_data(encInfo) == e_failure)
+    {
+        printf("ERROR : Failed to encode secret file data\n");
+        return e_failure;
+    }
+
     /* Copy remaining image bytes */
     if (copy_remaining_img_data(encInfo->fptr_src_image,
                                 encInfo->fptr_stego_image) == e_failure)

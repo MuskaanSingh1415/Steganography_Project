@@ -7,23 +7,47 @@
 Status read_and_validate_decode_args(char *argv[],
                                      DecodeInfo *decInfo)
 {
-    if(argv[2] == NULL)
+    char ch1, ch2;
+
+    /* Check if stego image is provided */
+    if (argv[2] == NULL)
+    {
+        printf("ERROR : Stego image not provided\n");
+        return e_failure;
+    }
+
+    /* Store stego image filename */
+    decInfo->stego_image_fname = argv[2];
+
+    /* Store output filename */
+    if (argv[3] != NULL)
+    {
+        strcpy(decInfo->output_fname, argv[3]);
+    }
+    else
+    {
+        strcpy(decInfo->output_fname, "output");
+    }
+
+    /* Open files first */
+    if (open_decode_files(decInfo) == e_failure)
     {
         return e_failure;
     }
 
-    decInfo->stego_image_fname = argv[2];
+    /* Read first two bytes from already opened file */
+    fread(&ch1, 1, 1, decInfo->fptr_stego_image);
+    fread(&ch2, 1, 1, decInfo->fptr_stego_image);
 
-    if(argv[3] != NULL)
+    /* BMP files always start with 'B' and 'M' */
+    if (ch1 != 'B' || ch2 != 'M')
     {
-        strcpy(decInfo->output_fname,
-               argv[3]);
+        printf("ERROR : Invalid BMP file\n");
+        return e_failure;
     }
-    else
-    {
-        strcpy(decInfo->output_fname,
-               "output");
-    }
+
+    /* Move file pointer back to beginning */
+    rewind(decInfo->fptr_stego_image);
 
     return e_success;
 }
@@ -239,65 +263,62 @@ Status do_decoding(DecodeInfo *decInfo)
 {
     char filename[40];
 
-    /* Open stego image */
-    if(open_decode_files(decInfo) == e_failure)
-    {
-        printf("ERROR : Unable to open stego image\n");
-        return e_failure;
-    }
-
-    /* Skip BMP header */
+    /* Skip BMP header — 54 bytes copied during encoding */
     fseek(decInfo->fptr_stego_image,
           54,
           SEEK_SET);
 
-    /* Decode magic string */
-    if(decode_magic_string(decInfo) == e_failure)
+    /* Decode magic string — validates this is a stego image */
+    if (decode_magic_string(decInfo) == e_failure)
     {
         printf("ERROR : Invalid Stego Image\n");
         return e_failure;
     }
-    /*decoding extension size*/
-    if (decode_secret_file_extn_size(decInfo) == e_failure)   // ← is this called first?
+
+    /* Decode extension size first — needed before decoding extension */
+    if (decode_secret_file_extn_size(decInfo) == e_failure)
     {
+        printf("ERROR : Failed to decode extension size\n");
         return e_failure;
     }
-    /* decode extension*/
+
+    /* Decode extension using the size we just decoded */
     if (decode_secret_file_extn(decInfo) == e_failure)
     {
+        printf("ERROR : Failed to decode extension\n");
         return e_failure;
     }
-    /* Create output filename */
-    strcpy(filename,
-           decInfo->output_fname);
 
-    strcat(filename,
-           decInfo->extn_secret_file);
+    /* Build output filename — e.g. "output.txt" */
+    strcpy(filename, decInfo->output_fname);
+    strcat(filename, decInfo->extn_secret_file);
 
-    /* Open output file */
-    decInfo->fptr_output =
-        fopen(filename,
-              "wb");
+    /* Open output file for writing */
+    decInfo->fptr_output = fopen(filename, "wb");
 
-    if(decInfo->fptr_output == NULL)
+    if (decInfo->fptr_output == NULL)
     {
+        printf("ERROR : Unable to open output file\n");
         return e_failure;
     }
 
     /* Decode file size */
-    if(decode_secret_file_size(decInfo) == e_failure)
+    if (decode_secret_file_size(decInfo) == e_failure)
     {
+        printf("ERROR : Failed to decode file size\n");
         return e_failure;
     }
 
     /* Decode file data */
-    if(decode_secret_file_data(decInfo) == e_failure)
+    if (decode_secret_file_data(decInfo) == e_failure)
     {
+        printf("ERROR : Failed to decode file data\n");
         return e_failure;
     }
 
     printf("INFO : Decoding Successful\n");
 
+    /* Close all opened files */
     fclose(decInfo->fptr_stego_image);
     fclose(decInfo->fptr_output);
 
