@@ -36,8 +36,8 @@ Status read_and_validate_decode_args(char *argv[],
     }
 
     /* Read first two bytes from already opened file */
-    fread(&ch1, 1, 1, decInfo->fptr_stego_image);
-    fread(&ch2, 1, 1, decInfo->fptr_stego_image);
+    fread(&ch1, ONE_BYTE , ONE_ELEMENT , decInfo->fptr_stego_image);
+    fread(&ch2, ONE_BYTE, ONE_ELEMENT, decInfo->fptr_stego_image);
 
     /* BMP files always start with 'B' and 'M' */
     if (ch1 != 'B' || ch2 != 'M')
@@ -106,8 +106,8 @@ Status decode_magic_string(DecodeInfo *decInfo)
     for(i = 0; i < strlen(MAGIC_STRING); i++)
     {
         fread(image_buffer,
-              1,
-              8,
+              ONE_BYTE,
+              EIGHT_ELEMENT,
               decInfo->fptr_stego_image);
 
         decode_byte_from_lsb(image_buffer,
@@ -129,25 +129,32 @@ Status decode_magic_string(DecodeInfo *decInfo)
  */
 Status decode_secret_file_extn_size(DecodeInfo *decInfo)
 {
-    char image_buffer[32];
-    int size = 0;
+    char image_buffer[EIGHT_BYTE];   // holds 8 image bytes per bit extraction
+    char size_byte;
+    int decoded_size = 0;
     int i;
 
     printf("INFO : Decoding Secret File Extension Size\n");
 
-    /* Read 32 image bytes */
-    fread(image_buffer,
-          1,
-          32,
-          decInfo->fptr_stego_image);
-
-    /* Rebuild the original 32-bit integer */
-    for (i = 0; i < 32; i++)
+    /* size is an int = 4 bytes, decode each one */
+    for (i = 0; i < sizeof(int); i++)
     {
-        size = (size << 1) | (image_buffer[i] & 1);
+        /* Read 8 image bytes — carries 8 bits of one size byte */
+        fread(image_buffer,
+              ONE_BYTE,
+              EIGHT_ELEMENT,
+              decInfo->fptr_stego_image);
+
+        /* Rebuild one byte from the LSBs of image_buffer */
+        decode_byte_from_lsb(image_buffer, &size_byte);
+
+        /* Shift previously decoded bytes left by 8 to make room */
+        /* OR in the newly decoded byte into the freed-up lowest 8 bits */
+        decoded_size = (decoded_size << 8) | size_byte ;
     }
 
-    decInfo->extn_size = size;
+    /* Store the fully reconstructed extension size */
+    decInfo->extn_size = decoded_size;
 
     printf("INFO : Extension Size Decoded = %d\n",
            decInfo->extn_size);
@@ -170,8 +177,8 @@ Status decode_secret_file_extn(DecodeInfo *decInfo)
     for (i = 0; i < decInfo->extn_size; i++)
     {
         fread(image_buffer,
-              1,
-              8,
+              ONE_BYTE,
+              EIGHT_ELEMENT,
               decInfo->fptr_stego_image);
 
         decode_byte_from_lsb(image_buffer,
@@ -193,29 +200,27 @@ Status decode_secret_file_extn(DecodeInfo *decInfo)
  */
 Status decode_secret_file_size(DecodeInfo *decInfo)
 {
-    char image_buffer[32];
-    int size = 0;
-    int i;
+    char image_buffer[8];
+    char size_byte;
+    int decoded_size = 0;
 
     printf("INFO : Decoding Secret File Size\n");
 
-    /* Read 32 image bytes */
-    fread(image_buffer,
-          1,
-          32,
-          decInfo->fptr_stego_image);
-
-    /* Rebuild the original 32-bit integer */
-    for(i = 0; i < 32; i++)
+    for (int i = 0; i < 4; i++)
     {
-        size = (size << 1) |
-               (image_buffer[i] & 1);
+        /* Read 8 image bytes */
+        fread(image_buffer, 1, 8, decInfo->fptr_stego_image);
+
+        /* Decode one byte */
+        decode_byte_from_lsb(image_buffer, &size_byte);
+
+        /* Append the decoded byte */
+        decoded_size = (decoded_size << 8) | (unsigned char)size_byte;
     }
 
-    decInfo->size_secret_file = size;
+    decInfo->size_secret_file = decoded_size;
 
-    printf("INFO : Secret File Size = %ld\n",
-           decInfo->size_secret_file);
+    printf("INFO : Secret File Size = %ld\n", decInfo->size_secret_file);
 
     return e_success;
 }
@@ -237,8 +242,8 @@ Status decode_secret_file_data(DecodeInfo *decInfo)
     {
         /* Read 8 image bytes */
         fread(image_buffer,
-              1,
-              8,
+              ONE_BYTE,
+              EIGHT_ELEMENT,
               decInfo->fptr_stego_image);
 
         /* Decode one character */
@@ -247,8 +252,8 @@ Status decode_secret_file_data(DecodeInfo *decInfo)
 
         /* Write character into output file */
         fwrite(&ch,
-               1,
-               1,
+               ONE_BYTE,
+               ONE_ELEMENT,
                decInfo->fptr_output);
     }
 

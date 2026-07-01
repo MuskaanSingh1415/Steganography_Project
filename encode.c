@@ -48,8 +48,8 @@ Status read_and_validate_encode_args(char *argv[], EncodeInfo *encInfo)
     }
 
     /* Read first two bytes from already opened source image */
-    fread(&ch1, 1, 1, encInfo->fptr_src_image);
-    fread(&ch2, 1, 1, encInfo->fptr_src_image);
+    fread(&ch1, ONE_BYTE, ONE_ELEMENT, encInfo->fptr_src_image);
+    fread(&ch2, ONE_BYTE, ONE_ELEMENT, encInfo->fptr_src_image);
 
     /* BMP files always start with 'B' and 'M' */
     if (ch1 != 'B' || ch2 != 'M')
@@ -101,10 +101,10 @@ uint get_image_size_for_bmp(FILE *fptr_image)
     fseek(fptr_image, 18, SEEK_SET);
 
     /* Read image width */
-    fread(&width, sizeof(int), 1, fptr_image);
+    fread(&width, sizeof(int),ONE_ELEMENT , fptr_image);
 
     /* Read image height */
-    fread(&height, sizeof(int), 1, fptr_image);
+    fread(&height, sizeof(int), ONE_ELEMENT, fptr_image);
 
     /* Move pointer back to beginning of file */
     rewind(fptr_image);
@@ -155,9 +155,9 @@ Status copy_remaining_img_data(FILE *fptr_src,
 {
     char ch;
 
-    while (fread(&ch, sizeof(char), 1, fptr_src) == 1)
+    while (fread(&ch, sizeof(char), ONE_ELEMENT, fptr_src) == 1)
     {
-        fwrite(&ch, sizeof(char), 1, fptr_dest);
+        fwrite(&ch, sizeof(char), ONE_ELEMENT, fptr_dest);
     }
 
     return e_success;
@@ -238,39 +238,35 @@ Status encode_magic_string(const char *magic_string, EncodeInfo *encInfo)
  */
 Status encode_secret_file_extn_size(int size, EncodeInfo *encInfo)
 {
-    char image_buffer[32];   // 32 image bytes — one per bit of the 32-bit size
+    char size_buf[sizeof(int)];   // holds the 4 bytes of size
+    int i;
 
     printf("INFO : Encoding Secret File Extension Size\n");
 
-    fread(image_buffer,
-          1,
-          32,
-          encInfo->fptr_src_image);
-    // read 32 bytes from source image
-    // these bytes will carry the 32 bits of size
-
-    for (int i = 0; i < 32; i++)
+    /* Break size into 4 bytes and store in buffer */
+    for (i = 0; i < sizeof(int); i++)
     {
-        if ((size >> (31 - i)) & 1)
-        {
-            image_buffer[i] = image_buffer[i] | 1;
-        }
-        else
-        {
-            image_buffer[i] = image_buffer[i] & 0xFE;
-        }
+        /* Extract one byte of size at a time */
+        /* i=0 → most significant byte */
+        /* i=3 → least significant byte */
+        size_buf[i] = (size >> (24 - i * 8)) ;
     }
 
-    fwrite(image_buffer,
-           1,
-           32,
-           encInfo->fptr_stego_image);
-    // write the modified 32 bytes into the stego image
+    /* Encode all 4 bytes into image using encode_data_to_image */
+    if (encode_data_to_image(size_buf,
+                             sizeof(int),
+                             encInfo->fptr_src_image,
+                             encInfo->fptr_stego_image) == e_failure)
+    {
+        printf("ERROR : Failed to encode extension size\n");
+        return e_failure;
+    }
 
     printf("INFO : Extension Size Encoded Successfully\n");
 
     return e_success;
 }
+
 /*
  * Encode secret file extension
  * Example : .txt
@@ -310,7 +306,7 @@ Status encode_data_to_image(const char *data,
     for(int i = 0; i < size; i++)
     {
         /* Read 8 image bytes from source image */
-        fread(image_buffer, 1, 8, fptr_src_image);
+        fread(image_buffer, ONE_BYTE, EIGHT_ELEMENT, fptr_src_image);
 
         /*
          * Hide one character inside these 8 bytes.
@@ -320,7 +316,7 @@ Status encode_data_to_image(const char *data,
         encode_byte_tolsb(data[i], image_buffer);
 
         /* Write modified bytes to stego image */
-        fwrite(image_buffer, 1, 8, fptr_stego_image);
+        fwrite(image_buffer, ONE_BYTE, EIGHT_ELEMENT, fptr_stego_image);
     }
 
     /* Encoding completed successfully */
@@ -384,7 +380,7 @@ Status encode_secret_file_size(long file_size,
 
     /* Write modified bytes to stego image */
     fwrite(image_buffer,
-           1,
+           ONE_BYTE,
            32,
            encInfo->fptr_stego_image);
 
@@ -403,7 +399,7 @@ Status encode_secret_file_data(EncodeInfo *encInfo)
 
     rewind(encInfo->fptr_secret);
 
-    while(fread(&ch, 1, 1,
+    while(fread(&ch, ONE_BYTE, ONE_ELEMENT,
                 encInfo->fptr_secret) == 1)
     {
         if(encode_data_to_image(&ch,
