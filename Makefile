@@ -18,7 +18,7 @@ all:
 
 # Run encoding example
 encode:
-	./$(TARGET) -e beautiful.bmp secret.txt stego.bmp
+	./$(TARGET) -e beautiful.bmp secret.txt 
 
 # Run decoding example
 decode:

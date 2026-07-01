@@ -332,7 +332,7 @@ Status do_decoding(DecodeInfo *decInfo)
         return e_failure;
     }
 
-    printf("INFO : Decoding Successful\n");
+   // printf("INFO : Decoding Successful\n");
 
     /* Close all opened files */
     fclose(decInfo->fptr_stego_image);
